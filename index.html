@@ -1,6 +1,7 @@
 <html>
 <head>
   <title>Thermostat</title>
+  <link rel="manifest" href="manifest.json"/>
   <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
   <script type="text/javascript" src="md5.js"></script>
   <script type="text/javascript" src="digestAuthRequest.js"></script>
@@ -39,6 +40,10 @@
   display: none;
 }
 
+#notifications {
+  display: none;
+}
+
   </style>
 </head>
 <body bgcolor="white" text="black">
@@ -48,6 +53,9 @@ Current target: <span id="currentTarget">...</span><br>
 <form id="form">
  <input id="target" name="target">
 </form>
+<br>
+<a id="notification" href="#" onClick="registerServiceWorker()">Subscribe</a>
+<div>
 <svg class="chart" height="120">
 </svg>
 <!--div id="graph">
@@ -67,8 +75,33 @@ function getQueryVariable(variable)
   return(false);
 }
 
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('notification-service-worker.js').then(function(reg) {
+      console.log(':^)', reg);
+      reg.pushManager.subscribe({
+        userVisibleOnly: true
+      }).then(function(sub) {
+        console.log('endpoint:', sub.endpoint);
+        $.post('/subscribe/' + encodeURIComponent(sub.endpoint));
+      });
+    }).catch(function(err) {
+      console.log(':^(', err);
+    });
+  }
+}
+
+function allowNotificationRegistration() {
+  if ('serviceWorker' in navigator) {
+    $('#notification').show();
+  }
+  registerServiceWorker();
+}
+
 
 $(function() {
+  allowNotificationRegistration();
+
   var host = 'http://pi.bzzt.net:5000'
   $.getJSON(host + '/latest/temperature', function(data) {
     $('#currentTemperature').text(data.value)
