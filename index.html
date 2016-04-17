@@ -1,0 +1,171 @@
+<html>
+<head>
+  <title>Thermostat</title>
+  <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+  <script type="text/javascript" src="md5.js"></script>
+  <script type="text/javascript" src="digestAuthRequest.js"></script>
+  <script type="text/javascript" src="d3.v3.min.js" charset="utf-8"></script>
+  <style>
+    #graph div {
+      background-color: blue;
+      height: 10px;
+      clear: left;
+      margin-top: 1px;
+    } 
+
+    .chart rect {
+      fill: blue;
+    }
+
+    .chart text {
+      fill: white;
+      font: 10px sans-serif;
+      text-anchor: end;
+    }
+
+.axis text {
+  font: 10px sans-serif;
+  fill: black;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.x.axis path {
+  display: none;
+}
+
+  </style>
+</head>
+<body bgcolor="white" text="black">
+<center><h1>Thermostat</h1></center>
+Current temperature: <span id="currentTemperature">...</span><br>
+Current target: <span id="currentTarget">...</span><br>
+<form id="form">
+ <input id="target" name="target">
+</form>
+<svg class="chart" height="120">
+</svg>
+<!--div id="graph">
+  <div>x</div>
+</div-->
+
+<script>
+
+function getQueryVariable(variable)
+{
+  var query = window.location.search.substring(1);
+  var vars = query.split("&");
+  for (var i=0;i<vars.length;i++) {
+    var pair = vars[i].split("=");
+    if(pair[0] == variable){return pair[1];}
+  }
+  return(false);
+}
+
+
+$(function() {
+  var host = 'http://pi.bzzt.net:5000'
+  $.getJSON(host + '/latest/temperature', function(data) {
+    $('#currentTemperature').text(data.value)
+  });
+  $.getJSON(host + '/latest/target', function(data) {
+    $('#currentTarget').text(data.value)
+  });
+
+  function postNewTarget() {
+    var timestamp = new Date().getTime()
+    var url = host + '/data/target-' + timestamp
+    var postReq = new digestAuthRequest('POST', url, 'thermodata', 'geheim');
+    postReq.request(
+      function success(data) {}, 
+      function error(errorCode) {}, 
+      {
+        timestamp: timestamp,
+        value: $('#target').val()
+      }
+    )
+  }
+  $('#target').change(postNewTarget)
+  $('#form').submit(function() { return false })
+
+  var newTarget = getQueryVariable('target') 
+  if (newTarget) {
+    $('#target').val(newTarget)
+    postNewTarget()
+  }
+
+  var temps = [];  
+
+  var margin = {top: 20, right: 30, bottom: 30, left: 40};
+  var width = 520 - margin.left - margin.right;
+  var height = 200 - margin.top - margin.bottom;
+
+  var chart = d3.select(".chart")
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom)
+    .append('g')
+      .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
+
+  var now = new Date().getTime() 
+  var from = now - 2000 * 1000
+  var to = now + 5 * 1000 + 600 * 1000
+  var x = d3.scale.linear()
+    .domain([from, to])
+    .range([0, width])
+
+  var y = d3.scale.linear()
+    .domain([14, 25])
+    .range([height, 0]);
+
+  var yAxis = d3.svg.axis()
+    .scale(y)
+    .orient('left');
+  chart.append('g')
+    .attr('class', 'y axis')
+    .call(yAxis);
+
+
+  function addTemperatureEventToGraph(event) {
+    temps.push(event);
+    var barWidth = 5;
+
+    var gs = chart.selectAll('.bar').data(temps)
+    gs.attr('transform', function(d) { return "translate(" + x(d.timestamp) + ", 0)"; })
+    gs.selectAll('rect')
+        .attr('x', function(d) { return x(d.timestamp); })
+        .attr('y', function(d) { return y(d.value); })
+        .attr('height', function(d) { return height - y(d.value); })
+        .attr('width', barWidth - 1);
+  
+    var newgs = gs.enter().append('g')
+
+    newgs
+      .attr('class', 'bar')
+      .attr('transform', function(d) { return "translate(" + x(d.timestamp) + ", 0)"; })
+
+    newgs.append('rect')
+        .attr('x', function(d) { return x(d.timestamp); })
+        .attr('y', function(d) { return y(d.value); })
+        .attr('height', function(d) { return height - y(d.value); })
+        .attr('width', barWidth - 1);
+  }
+
+  var tempurl = host + '/stream/temperature?gt=temperature-' + from;
+  new EventSource(tempurl).addEventListener('message', function(e) {
+    var event = JSON.parse(e.data);
+    $('#currentTemperature').text(event.value);
+    addTemperatureEventToGraph(event);
+  });
+  new EventSource(host + '/stream/target').addEventListener('message', function(e) {
+    var event = JSON.parse(e.data);
+    $('#currentTarget').text(event.value);
+  });
+});
+</script>
+</body>
+</html>
